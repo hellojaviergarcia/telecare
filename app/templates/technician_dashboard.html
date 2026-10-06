@@ -1,0 +1,898 @@
+<!--
+  Copyright (C) 2026 Javier Garcia
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+-->
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-grid">
+  <div class="section-head" style="margin-bottom: 24px;">
+    <h1 style="margin: 0;">Technician Dashboard</h1>
+  </div>
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+  <!-- Analytics KPI Cards -->
+  <div class="kpi-grid">
+    <div class="kpi-card highlight">
+      <span class="kpi-label">Requests Today</span>
+      <span class="kpi-value">{{ analytics.total_today }}</span>
+    </div>
+    <div class="kpi-card warning">
+      <span class="kpi-label">Pending Requests</span>
+      <span class="kpi-value">{{ analytics.pending_requests }}</span>
+    </div>
+    <div class="kpi-card">
+      <span class="kpi-label">Avg Response</span>
+      <span class="kpi-value">{{ analytics.avg_response_sec }} <span style="font-size:14px; font-weight:600; color:var(--muted);">secs</span></span>
+    </div>
+  </div>
+
+  <!-- Analytics Charts -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px;">
+    <div class="card" style="padding: 16px;">
+      <h3 style="margin-top:0; font-size:14px; text-transform:uppercase; color:var(--muted);">Requests (Last 7 Days)</h3>
+      <div style="position: relative; height: 200px;">
+        <canvas id="weeklyChart"></canvas>
+      </div>
+    </div>
+    <div class="card" style="padding: 16px;">
+      <h3 style="margin-top:0; font-size:14px; text-transform:uppercase; color:var(--muted);">Requests by Shift</h3>
+      <div style="position: relative; height: 200px;">
+        <canvas id="shiftChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <section class="card">
+    <div style="display: flex; flex-wrap: wrap; gap: 2rem; align-items: flex-start;">
+      <div style="flex: 1 1 300px;">
+        <h2 style="margin: 0 0 24px 0;">Create New Operator</h2>
+        <form method="post" action="/technician/create_operator" class="form-stack" style="margin-bottom: 0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Name<input type="text" name="name" required></label>
+          <label>Email<input type="email" name="email" required></label>
+          <label>Password<input type="password" name="password" required></label>
+          <label>Shift
+            <select name="shift" required>
+              <option value="morning">Morning</option>
+              <option value="afternoon">Afternoon</option>
+              <option value="night">Night</option>
+            </select>
+          </label>
+          <button class="btn btn-primary" type="submit">Register Operator</button>
+        </form>
+      </div>
+
+      <div style="flex: 2 1 500px; min-width: 0; display: flex; flex-direction: column; min-height: 0;" id="operators-section">
+        <div class="section-head">
+          <h2 style="margin: 0;">Registered Operators</h2>
+          <form method="GET" action="/technician/dashboard" class="header-controls">
+            <input type="hidden" name="page" value="{{ page }}">
+            <input type="hidden" name="pat_page" value="{{ pat_page }}">
+            <input type="hidden" name="search_pat" value="{{ search_pat }}">
+            <input type="hidden" name="search_req" value="{{ search_req }}">
+            <input type="text" name="search_op" value="{{ search_op }}" placeholder="Search..." oninput="asyncSearch(this, 'operators-section')" class="header-search">
+            <button type="submit" style="display: none;"></button>
+            <a href="/technician/dashboard?page={{ page }}&pat_page={{ pat_page }}&search_pat={{ search_pat }}&search_req={{ search_req }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'operators-section')" class="btn-sm" title="Clear Search">✕</a>
+            <a href="/technician/export/operators?search_op={{ search_op }}" class="btn btn-secondary" class="btn-sm">Export CSV</a>
+          </form>
+        </div>
+        <div style="flex: 1;">
+          <div class="table-wrap" style="overflow-x: auto; overflow-y: auto; min-height: 380px; height: 380px;">
+      <table id="operators-table">
+        <thead>
+           <tr><th>Name</th><th>Email</th><th>Shift</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for op in operators %}
+          <tr>
+            <td><span class="truncate-text" style="max-width: 120px;" title="{{ op.name }}" onclick="navigator.clipboard.writeText(this.title); alert('Name copied to clipboard!');">{{ op.name }}</span></td>
+            <td><span class="truncate-text" title="{{ op.email }}" onclick="navigator.clipboard.writeText(this.title); alert('Email copied to clipboard!');">{{ op.email }}</span></td>
+            <td>{{ op.shift|capitalize }}</td>
+            <td style="color: var(--muted); font-size: 0.85em; min-width: 85px;">
+              <div style="white-space: nowrap;">{{ op.created_at.strftime("%Y-%m-%d") }}</div>
+              <div style="white-space: nowrap;">{{ op.created_at.strftime("%H:%M") }}</div>
+            </td>
+            <td class="actions">
+              <div>
+                <a class="btn btn-secondary" href="/technician/edit_user/{{ op.id }}" onclick="showEditModal(event, this.href)" style="padding: 6px 12px; font-size: 13px;">Edit</a>
+                <form method="post" action="/technician/delete_user/{{ op.id }}" onsubmit="return confirm('Are you sure you want to delete this operator? All their history will be lost.');" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit" class="btn" style="background:#fef2f2; color:#991b1b; padding: 6px 12px; font-size: 13px;">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="empty">No operators yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+          </div>
+          <div class="resize-handle" onmousedown="startResize(event, this)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="9" x2="16" y2="9"></line><line x1="8" y1="15" x2="16" y2="15"></line></svg>
+          </div>
+        </div>
+        {% if total_op_pages and total_op_pages > 1 %}
+        <div class="pagination" style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
+          {% if op_page > 1 %}
+          <a href="/technician/dashboard?page={{ page }}&op_page={{ op_page - 1 }}&pat_page={{ pat_page }}&search_op={{ search_op }}&search_pat={{ search_pat }}&search_req={{ search_req }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'operators-section')" class="btn-sm">Prev</a>
+          {% endif %}
+          <span class="pagination-info">{{ op_page }} / {{ total_op_pages }}</span>
+          {% if op_page < total_op_pages %}
+          <a href="/technician/dashboard?page={{ page }}&op_page={{ op_page + 1 }}&pat_page={{ pat_page }}&search_op={{ search_op }}&search_pat={{ search_pat }}&search_req={{ search_req }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'operators-section')" class="btn-sm">Next</a>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div style="display: flex; flex-wrap: wrap; gap: 2rem; align-items: flex-start;">
+      <div style="flex: 1 1 300px;">
+        <h2 style="margin: 0 0 24px 0;">Create New Patient</h2>
+        <form method="post" action="/technician/create_patient" class="form-stack" style="margin-bottom: 0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>Patient Name<input type="text" name="name" required></label>
+          <label>Password<input type="password" name="password" required></label>
+          <button class="btn btn-primary" type="submit">Register Patient</button>
+        </form>
+      </div>
+
+      <div style="flex: 2 1 500px; min-width: 0; display: flex; flex-direction: column; min-height: 0;" id="patients-section">
+        <div class="section-head">
+          <h2 style="margin: 0;">Registered Patients</h2>
+          <form method="GET" action="/technician/dashboard" class="header-controls">
+            <input type="hidden" name="page" value="{{ page }}">
+            <input type="hidden" name="op_page" value="{{ op_page }}">
+            <input type="hidden" name="search_op" value="{{ search_op }}">
+            <input type="hidden" name="search_req" value="{{ search_req }}">
+            <input type="text" name="search_pat" value="{{ search_pat }}" placeholder="Search..." oninput="asyncSearch(this, 'patients-section')" class="header-search">
+            <button type="submit" style="display: none;"></button>
+            <a href="/technician/dashboard?page={{ page }}&op_page={{ op_page }}&search_op={{ search_op }}&search_req={{ search_req }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'patients-section')" class="btn-sm" title="Clear Search">✕</a>
+            <a href="/technician/export/patients?search_pat={{ search_pat }}" class="btn btn-secondary" class="btn-sm">Export CSV</a>
+          </form>
+        </div>
+        <div style="flex: 1;">
+          <div class="table-wrap" style="overflow-x: auto; overflow-y: auto; min-height: 250px; height: 250px;">
+      <table id="patients-table">
+        <thead>
+          <tr><th>Name</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for p in patients %}
+          <tr>
+            <td><span class="truncate-text" style="max-width: 250px;" title="{{ p.name }}" onclick="navigator.clipboard.writeText(this.title); alert('Name copied to clipboard!');">{{ p.name }}</span></td>
+            <td style="color: var(--muted); font-size: 0.85em; min-width: 85px;">
+              <div style="white-space: nowrap;">{{ p.created_at.strftime("%Y-%m-%d") }}</div>
+              <div style="white-space: nowrap;">{{ p.created_at.strftime("%H:%M") }}</div>
+            </td>
+            <td class="actions">
+              <div>
+                <a class="btn btn-secondary" href="/technician/edit_user/{{ p.id }}" onclick="showEditModal(event, this.href)" style="padding: 6px 12px; font-size: 13px;">Edit</a>
+                <button type="button" class="btn" onclick="document.getElementById('modal-profile-{{ p.id }}').showModal()" style="background:#eff6ff; color:#1d4ed8; padding: 6px 12px; font-size: 13px; font-weight: 500;">Profile</button>
+                <form method="post" action="/technician/delete_user/{{ p.id }}" onsubmit="return confirm('Are you sure you want to delete this patient? All their requests will be lost.');" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit" class="btn" style="background:#fef2f2; color:#991b1b; padding: 6px 12px; font-size: 13px;">Delete</button>
+                </form>
+                
+                <dialog id="modal-profile-{{ p.id }}" class="card" style="padding: 1.5rem; border: 1px solid var(--border); border-radius: 8px; max-width: 500px; width: 100%;">
+                  <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h3 style="margin: 0; font-size: 1.25rem; font-weight: 600;">Medical Profile: {{ p.name }}</h3>
+                    <button type="button" onclick="closeModal('modal-profile-{{ p.id }}')" style="background: none; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+                  </div>
+                  <form method="post" action="/technician/patient/{{ p.id }}/profile" class="form-stack" onsubmit="event.preventDefault(); var form=this; closeModal('modal-profile-{{ p.id }}'); setTimeout(() => form.submit(), 200);">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                      <label>Birth Date <input type="date" name="birth_date" value="{{ p.profile.birth_date if p.profile and p.profile.birth_date else '' }}"></label>
+                      <label>Blood Type <input type="text" name="blood_type" value="{{ p.profile.blood_type if p.profile and p.profile.blood_type != None else '' }}"></label>
+                    </div>
+                    <label>Allergies <input type="text" name="allergies" value="{{ p.profile.allergies if p.profile and p.profile.allergies != None else '' }}"></label>
+                    <label>Chronic Conditions <input type="text" name="chronic_conditions" value="{{ p.profile.chronic_conditions if p.profile and p.profile.chronic_conditions != None else '' }}"></label>
+                    <label>Medications <input type="text" name="medications" value="{{ p.profile.medications if p.profile and p.profile.medications != None else '' }}"></label>
+                    <label>Emergency Contact <input type="text" name="emergency_contact" value="{{ p.profile.emergency_contact if p.profile and p.profile.emergency_contact != None else '' }}"></label>
+                    <div style="display: flex; gap: 12px; margin-top: 12px;">
+                      <button type="submit" class="btn btn-primary" style="flex:1">Save Changes</button>
+                      <button type="button" class="btn btn-secondary" onclick="closeModal('modal-profile-{{ p.id }}')" style="flex:1">Cancel</button>
+                    </div>
+                  </form>
+                </dialog>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="3" class="empty">No patients yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+          </div>
+          <div class="resize-handle" onmousedown="startResize(event, this)">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="9" x2="16" y2="9"></line><line x1="8" y1="15" x2="16" y2="15"></line></svg>
+          </div>
+        </div>
+        {% if total_pat_pages and total_pat_pages > 1 %}
+        <div class="pagination" style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
+          {% if pat_page > 1 %}
+          <a href="/technician/dashboard?page={{ page }}&op_page={{ op_page }}&pat_page={{ pat_page - 1 }}&search_op={{ search_op }}&search_pat={{ search_pat }}&search_req={{ search_req }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'patients-section')" class="btn-sm">Prev</a>
+          {% endif %}
+          <span class="pagination-info">{{ pat_page }} / {{ total_pat_pages }}</span>
+          {% if pat_page < total_pat_pages %}
+          <a href="/technician/dashboard?page={{ page }}&op_page={{ op_page }}&pat_page={{ pat_page + 1 }}&search_op={{ search_op }}&search_pat={{ search_pat }}&search_req={{ search_req }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'patients-section')" class="btn-sm">Next</a>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+  <section class="card" id="history-section">
+    <div class="section-head">
+      <h2 style="margin: 0;">Assistance History</h2>
+      <form method="GET" action="/technician/dashboard" class="header-controls">
+        <input type="hidden" name="page" value="{{ page }}">
+        <input type="hidden" name="op_page" value="{{ op_page }}">
+        <input type="hidden" name="pat_page" value="{{ pat_page }}">
+        <input type="hidden" name="search_op" value="{{ search_op }}">
+        <input type="hidden" name="search_pat" value="{{ search_pat }}">
+        <input type="text" name="search_req" value="{{ search_req }}" placeholder="Search..." oninput="asyncSearch(this, 'history-section')" class="header-search">
+        <button type="submit" style="display: none;"></button>
+        <a href="/technician/dashboard?page={{ page }}&op_page={{ op_page }}&pat_page={{ pat_page }}&search_op={{ search_op }}&search_pat={{ search_pat }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'history-section')" class="btn-sm" title="Clear Search">✕</a>
+        <a href="/technician/export/history?search_req={{ search_req }}" class="btn btn-secondary" class="btn-sm">Export CSV</a>
+      </form>
+    </div>
+    <div class="table-wrap">
+      <table id="history-table">
+        <thead>
+          <tr><th>ID</th><th>Patient</th><th>Operator</th><th>Status</th><th>Observations</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for req in requests %}
+          <tr>
+            <td>#{{ req.id }}</td>
+            <td>{{ req.patient.name }}</td>
+            <td>{% if req.operator %}{{ req.operator.name }}{% else %}<span class="muted">-</span>{% endif %}</td>
+            <td><span class="status status-{{ req.status }}">{{ req.status|replace('_', ' ')|title }}</span></td>
+            <td>
+              {% if req.message %}
+              <div style="display: flex; align-items: center; justify-content: space-between; max-width: 250px;">
+                <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9em; flex: 1; margin-right: 5px;" title="{{ req.message }}">{{ req.message }}</div>
+                <button type="button" class="btn btn-secondary" style="padding: 2px 6px; font-size: 11px; flex-shrink: 0;" onclick="showObservationModal(this)" data-message="{{ req.message | escape }}">🔍 View</button>
+              </div>
+              {% else %}
+              <span class="muted" style="font-size: 0.9em;">-</span>
+              {% endif %}
+            </td>
+            <td style="color: var(--muted); font-size: 0.85em; min-width: 85px;">
+              <div style="white-space: nowrap;">{{ req.created_at.strftime("%Y-%m-%d") }}</div>
+              <div style="white-space: nowrap;">{{ req.created_at.strftime("%H:%M") }}</div>
+            </td>
+            <td class="actions">
+              <div>
+                <a class="btn btn-secondary" href="/technician/edit_request/{{ req.id }}" onclick="showEditModal(event, this.href)" style="padding: 6px 12px; font-size: 13px;">Edit</a>
+                <form method="post" action="/technician/delete_request/{{ req.id }}" onsubmit="return confirm('Are you sure you want to delete this record?');" style="display:inline;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <button type="submit" class="btn" style="background:#fef2f2; color:#991b1b; padding: 6px 12px; font-size: 13px;">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="empty">No assistance records yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if total_pages and total_pages > 1 %}
+    <div class="pagination" style="margin-top: 1rem; display: flex; gap: 0.5rem; justify-content: center; align-items: center;">
+      {% if page > 1 %}
+      <a href="/technician/dashboard?page={{ page - 1 }}&op_page={{ op_page }}&pat_page={{ pat_page }}&search_op={{ search_op }}&search_pat={{ search_pat }}&search_req={{ search_req }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'history-section')" style="padding: 6px 12px; font-size: 13px;">Previous</a>
+      {% endif %}
+      <span style="padding: 6px 12px; font-size: 13px; font-weight: bold; color: #4b5563;">Page {{ page }} of {{ total_pages }}</span>
+      {% if page < total_pages %}
+      <a href="/technician/dashboard?page={{ page + 1 }}&op_page={{ op_page }}&pat_page={{ pat_page }}&search_op={{ search_op }}&search_pat={{ search_pat }}&search_req={{ search_req }}" class="btn btn-secondary" onclick="asyncNavigate(event, this.href, 'history-section')" style="padding: 6px 12px; font-size: 13px;">Next</a>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <dialog id="observation-modal" style="padding: 32px; border-radius: 12px; border: none; max-width: 500px; width: 90%; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); background: white;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h3 style="margin: 0; font-size: 1.25rem; color: inherit; font-weight: 600;">Observations</h3>
+      <button onclick="closeModal('observation-modal')" style="background: none; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+    </div>
+    <div id="observation-text" style="white-space: pre-wrap; font-size: 1rem; line-height: 1.6; color: inherit; margin-bottom: 24px; padding: 16px; background: var(--bg); border-radius: 8px; border: 1px solid var(--border);"></div>
+    <div style="display: flex; justify-content: flex-end;">
+      <button onclick="closeModal('observation-modal')" class="btn btn-secondary" style="padding: 8px 16px;">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="edit-modal" style="padding: 32px; border-radius: 12px; border: none; max-width: 500px; width: 90%; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); background: white;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h3 id="edit-modal-title" style="margin: 0; font-size: 1.25rem; color: inherit; font-weight: 600;">Edit</h3>
+      <button onclick="closeModal('edit-modal')" style="background: none; border: none; color: #94a3b8; font-size: 24px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+    </div>
+    <div id="edit-modal-content"></div>
+  </dialog>
+
+  <section class="card" style="margin-top: 2rem;">
+    <div class="section-head">
+      <h2 style="margin: 0;">Security Audit Logs</h2>
+      <div class="header-controls">
+        <select id="filter_audit_action" onchange="filterAuditLogs()" class="header-search">
+          <option value="">All Actions</option>
+          <option value="LOGIN_SUCCESS">Login Success</option>
+          <option value="LOGIN_FAILED">Login Failed</option>
+          <option value="LOGOUT">Logout</option>
+          <option value="OPERATOR_CREATED">Operator Created</option>
+          <option value="OPERATOR_EDITED">Operator Edited</option>
+          <option value="OPERATOR_DELETED">Operator Deleted</option>
+          <option value="PATIENT_CREATED">Patient Created</option>
+          <option value="PATIENT_EDITED">Patient Edited</option>
+          <option value="PATIENT_DELETED">Patient Deleted</option>
+          <option value="REQUEST_CREATED">Request Created</option>
+          <option value="REQUEST_ACKNOWLEDGED">Request Acknowledged</option>
+          <option value="REQUEST_RESOLVED">Request Resolved</option>
+          <option value="REQUEST_EDITED">Request Edited</option>
+          <option value="REQUEST_DELETED">Request Deleted</option>
+        </select>
+        <input type="text" id="search_audit" placeholder="Search..." oninput="filterAuditLogs()" class="header-search">
+        <button class="btn btn-secondary" onclick="document.getElementById('search_audit').value=''; document.getElementById('filter_audit_action').value=''; filterAuditLogs();" class="btn-sm" title="Clear Search">✕</button>
+        <button class="btn btn-secondary" onclick="exportAuditLogsCSV()" class="btn-sm">Export CSV</button>
+      </div>
+    </div>
+    <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+      <table class="data-table" style="width: 100%; border-collapse: collapse;" id="audit-table">
+        <thead>
+          <tr>
+            <th onclick="sortAuditLogs('timestamp')" style="cursor: pointer; text-align: left; padding: 12px; border-bottom: 2px solid var(--border);" title="Click to sort">Time <span id="audit-sort-timestamp">▼</span></th>
+            <th onclick="sortAuditLogs('ip')" style="cursor: pointer; text-align: left; padding: 12px; border-bottom: 2px solid var(--border);" title="Click to sort">IP <span id="audit-sort-ip"></span></th>
+            <th onclick="sortAuditLogs('user')" style="cursor: pointer; text-align: left; padding: 12px; border-bottom: 2px solid var(--border);" title="Click to sort">User <span id="audit-sort-user"></span></th>
+            <th onclick="sortAuditLogs('action')" style="cursor: pointer; text-align: left; padding: 12px; border-bottom: 2px solid var(--border);" title="Click to sort">Action <span id="audit-sort-action"></span></th>
+            <th style="text-align: left; padding: 12px; border-bottom: 2px solid var(--border);">Details</th>
+          </tr>
+        </thead>
+        <tbody id="audit-logs-body">
+          <!-- Rendered by JS -->
+        </tbody>
+      </table>
+      <div id="audit-pagination" style="display: flex; justify-content: space-between; align-items: center; padding: 12px; border-top: 1px solid var(--border);">
+        <button id="audit-prev" class="btn" style="background: var(--surface-2); color: var(--text); padding: 6px 12px;" onclick="prevAuditPage()" disabled>&larr; Previous</button>
+        <span id="audit-page-info" style="color: var(--muted); font-size: 14px; font-weight: 600;">Page 1 of 1</span>
+        <button id="audit-next" class="btn" style="background: var(--surface-2); color: var(--text); padding: 6px 12px;" onclick="nextAuditPage()" disabled>Next &rarr;</button>
+      </div>
+      </table>
+    </div>
+  </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterTable(input, tableId) {
+    const filter = input.value.toLowerCase();
+    const table = document.getElementById(tableId);
+    if (!table) return;
+    const tbody = table.querySelector('tbody');
+    if (!tbody) return;
+    const rows = tbody.getElementsByTagName('tr');
+    for (let i = 0; i < rows.length; i++) {
+        if (rows[i].querySelector('.empty')) continue;
+        const rowText = rows[i].textContent.toLowerCase();
+        if (rowText.includes(filter)) {
+            rows[i].style.display = '';
+        } else {
+            rows[i].style.display = 'none';
+        }
+    }
+}
+
+function closeModal(id) {
+    const modal = document.getElementById(id);
+    if (!modal) return;
+    modal.classList.add('closing');
+    modal.addEventListener('animationend', function handler() {
+        modal.classList.remove('closing');
+        modal.close();
+        modal.removeEventListener('animationend', handler);
+    }, { once: true });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('tbody tr').forEach((tr, i) => {
+        tr.dataset.origIndex = i;
+    });
+
+    document.querySelectorAll('th').forEach(th => {
+        if (th.textContent.trim().toUpperCase() === 'ACTIONS') return;
+        th.style.cursor = 'pointer';
+        th.title = 'Click to sort';
+        th.addEventListener('click', () => {
+            const table = th.closest('table');
+            const tbody = table.querySelector('tbody');
+            if (!tbody) return;
+            const ArrayRows = Array.from(tbody.querySelectorAll('tr'));
+            if (ArrayRows.length === 0 || ArrayRows[0].querySelector('.empty')) return;
+            
+            const index = Array.from(th.parentNode.children).indexOf(th);
+            let state = 'none';
+            if (th.classList.contains('sort-asc')) state = 'asc';
+            else if (th.classList.contains('sort-desc')) state = 'desc';
+            
+            table.querySelectorAll('th').forEach(h => {
+                h.classList.remove('sort-asc', 'sort-desc');
+                h.textContent = h.textContent.replace(/ ▲| ▼/g, '');
+            });
+            
+            if (state === 'none') {
+                th.classList.add('sort-asc');
+                th.textContent += ' ▲';
+                ArrayRows.sort((rowA, rowB) => {
+                    let cellA = rowA.children[index].textContent.trim().toLowerCase();
+                    let cellB = rowB.children[index].textContent.trim().toLowerCase();
+                    if (cellA.startsWith('#')) cellA = cellA.substring(1);
+                    if (cellB.startsWith('#')) cellB = cellB.substring(1);
+                    if (!isNaN(cellA) && !isNaN(cellB) && cellA !== '' && cellB !== '') return Number(cellA) - Number(cellB);
+                    return cellA.localeCompare(cellB);
+                });
+            } else if (state === 'asc') {
+                th.classList.add('sort-desc');
+                th.textContent += ' ▼';
+                ArrayRows.sort((rowA, rowB) => {
+                    let cellA = rowA.children[index].textContent.trim().toLowerCase();
+                    let cellB = rowB.children[index].textContent.trim().toLowerCase();
+                    if (cellA.startsWith('#')) cellA = cellA.substring(1);
+                    if (cellB.startsWith('#')) cellB = cellB.substring(1);
+                    if (!isNaN(cellA) && !isNaN(cellB) && cellA !== '' && cellB !== '') return Number(cellB) - Number(cellA);
+                    return cellB.localeCompare(cellA);
+                });
+            } else {
+                ArrayRows.sort((rowA, rowB) => Number(rowA.dataset.origIndex) - Number(rowB.dataset.origIndex));
+            }
+            
+            tbody.append(...ArrayRows);
+        });
+    });
+});
+
+function showObservationModal(button) {
+  const modal = document.getElementById('observation-modal');
+  const textDiv = document.getElementById('observation-text');
+  textDiv.textContent = button.getAttribute('data-message');
+  modal.showModal();
+}
+
+function showEditModal(event, url) {
+    event.preventDefault();
+    const modal = document.getElementById('edit-modal');
+    const contentDiv = document.getElementById('edit-modal-content');
+    const headerTitle = document.getElementById('edit-modal-title');
+    contentDiv.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);">Loading...</div>';
+    headerTitle.textContent = 'Edit';
+    modal.showModal();
+
+    fetch(url)
+        .then(res => res.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const formCard = doc.querySelector('.auth-card');
+            if (formCard) {
+                formCard.style.boxShadow = 'none';
+                formCard.style.border = 'none';
+                formCard.style.padding = '0';
+                formCard.style.margin = '0';
+                formCard.style.maxWidth = '100%';
+                
+                const h2 = formCard.querySelector('h2');
+                if (h2) {
+                    headerTitle.textContent = h2.textContent;
+                    h2.remove();
+                }
+                
+                const cancelBtn = formCard.querySelector('a.btn-secondary');
+                if (cancelBtn) {
+                    cancelBtn.href = '#';
+                    cancelBtn.onclick = (e) => { e.preventDefault(); closeModal('edit-modal'); };
+                }
+                
+                const form = formCard.querySelector('form');
+                if (form) {
+                    form.addEventListener('submit', function(e) {
+                        e.preventDefault();
+                        closeModal('edit-modal');
+                        setTimeout(() => {
+                            form.submit();
+                        }, 200);
+                    });
+                }
+                
+                contentDiv.innerHTML = '';
+                contentDiv.appendChild(formCard);
+            } else {
+                contentDiv.innerHTML = '<div class="alert">Error loading form.</div>';
+            }
+        });
+}
+(() => {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data && data.event === "dashboard_refresh") {
+        location.reload();
+      } else if (data && data.event === "new_audit_log") {
+        if (data.log && typeof allAuditLogs !== 'undefined') {
+          // Add new log to the beginning of the array
+          allAuditLogs.unshift(data.log);
+          // Only keep the most recent 100 logs in allAuditLogs
+          if (allAuditLogs.length > 100) {
+            allAuditLogs = allAuditLogs.slice(0, 100);
+          }
+          // Re-apply current sort and filters, which will also jump to page 1
+          filterAuditLogs();
+        }
+      }
+    } catch (e) {}
+  };
+})();
+</script>
+
+<script>
+let allAuditLogs = JSON.parse('{{ audit_logs_json | safe }}');
+let filteredAuditLogs = allAuditLogs;
+let currentAuditPage = 1;
+const auditLogsPerPage = 6;
+let auditSortCol = 'timestamp';
+let auditSortAsc = false;
+
+function sortAuditLogs(col) {
+    if (auditSortCol === col) {
+        auditSortAsc = !auditSortAsc;
+    } else {
+        auditSortCol = col;
+        auditSortAsc = true;
+    }
+    
+    // Update header icons
+    ['timestamp', 'ip', 'user', 'action'].forEach(c => {
+        const span = document.getElementById('audit-sort-' + c);
+        if (span) {
+            span.textContent = (c === auditSortCol) ? (auditSortAsc ? '▲' : '▼') : '';
+        }
+    });
+
+    filterAuditLogs(); // re-apply filters and sort
+}
+
+function filterAuditLogs() {
+    const query = (document.getElementById('search_audit') ? document.getElementById('search_audit').value.toLowerCase() : "");
+    const actionFilter = (document.getElementById('filter_audit_action') ? document.getElementById('filter_audit_action').value : "");
+
+    filteredAuditLogs = allAuditLogs.filter(log => {
+        const matchesQuery = !query || 
+            (log.user && log.user.toLowerCase().includes(query)) ||
+            (log.action && log.action.toLowerCase().includes(query)) ||
+            (log.ip && log.ip.toLowerCase().includes(query)) ||
+            (log.details && log.details.toLowerCase().includes(query));
+            
+        const matchesAction = !actionFilter || log.action === actionFilter;
+        
+        return matchesQuery && matchesAction;
+    });
+
+    // Apply sorting
+    filteredAuditLogs.sort((a, b) => {
+        let valA = a[auditSortCol] || '';
+        let valB = b[auditSortCol] || '';
+        
+        if (typeof valA === 'string') valA = valA.toLowerCase();
+        if (typeof valB === 'string') valB = valB.toLowerCase();
+        
+        if (valA < valB) return auditSortAsc ? -1 : 1;
+        if (valA > valB) return auditSortAsc ? 1 : -1;
+        return 0;
+    });
+
+    currentAuditPage = 1;
+    renderAuditLogs();
+}
+
+function exportAuditLogsCSV() {
+    if (!filteredAuditLogs || filteredAuditLogs.length === 0) {
+        alert("No logs to export with the current filters.");
+        return;
+    }
+    
+    // Create CSV headers
+    let csvContent = "Time,IP,User,Action,Details\n";
+    
+    // Add rows
+    filteredAuditLogs.forEach(log => {
+        // Escape quotes and wrap fields containing commas, newlines, or quotes
+        const escapeCSV = (field) => {
+            if (!field) return '""';
+            let str = String(field);
+            if (str.includes(',') || str.includes('\\n') || str.includes('"')) {
+                str = '"' + str.replace(/"/g, '""') + '"';
+            }
+            return str;
+        };
+        
+        const row = [
+            escapeCSV(log.timestamp),
+            escapeCSV(log.ip),
+            escapeCSV(log.user),
+            escapeCSV(log.action),
+            escapeCSV(log.details)
+        ].join(",");
+        
+        csvContent += row + "\n";
+    });
+    
+    // Trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "audit_logs_filtered.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function renderAuditLogs(animateFirstRow = false) {
+    const tbody = document.getElementById("audit-logs-body");
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    
+    // The filter logic is now centralized in filterAuditLogs(), 
+    // we only need to call filterAuditLogs() from the websocket handler if a new log arrives.
+    
+    const start = (currentAuditPage - 1) * auditLogsPerPage;
+    const end = start + auditLogsPerPage;
+    const pageLogs = filteredAuditLogs.slice(start, end);
+    
+    pageLogs.forEach((log, index) => {
+        const tr = document.createElement("tr");
+        const date = new Date(log.timestamp.endsWith('Z') ? log.timestamp : log.timestamp + 'Z');
+        let timeStr = "";
+        if (!isNaN(date)) {
+            timeStr = date.toLocaleDateString() + " " + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+        } else {
+            timeStr = log.timestamp;
+        }
+        
+        tr.innerHTML = `
+            <td style="padding: 12px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums;">${timeStr}</td>
+            <td style="padding: 12px; border-bottom: 1px solid var(--border); font-family: monospace;">${log.ip}</td>
+            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${log.user}</td>
+            <td style="padding: 12px; border-bottom: 1px solid var(--border);">
+              <span class="badge" style="background: var(--surface-2); color: var(--text);">${log.action}</span>
+            </td>
+            <td class="copyable-cell" style="padding: 12px; border-bottom: 1px solid var(--border);" data-fulltext="${log.details}" onclick="navigator.clipboard.writeText(this.getAttribute('data-fulltext'));">${log.details}</td>
+        `;
+        
+        if (animateFirstRow && index === 0 && currentAuditPage === 1) {
+            tr.style.opacity = '0';
+            tr.style.transform = 'translateY(-10px)';
+            tr.style.transition = 'all 0.3s ease-out';
+            setTimeout(() => {
+                tr.style.opacity = '1';
+                tr.style.transform = 'translateY(0)';
+            }, 50);
+        }
+        
+        tbody.appendChild(tr);
+    });
+    
+    const totalPages = Math.ceil(filteredAuditLogs.length / auditLogsPerPage) || 1;
+    const pageInfo = document.getElementById("audit-page-info");
+    const prevBtn = document.getElementById("audit-prev");
+    const nextBtn = document.getElementById("audit-next");
+    
+    if (pageInfo) pageInfo.innerText = `Page ${currentAuditPage} of ${totalPages}`;
+    if (prevBtn) prevBtn.disabled = currentAuditPage === 1;
+    if (nextBtn) nextBtn.disabled = currentAuditPage === totalPages;
+}
+
+function prevAuditPage() {
+    if (currentAuditPage > 1) {
+        currentAuditPage--;
+        renderAuditLogs();
+    }
+}
+
+function nextAuditPage() {
+    const totalPages = Math.ceil(filteredAuditLogs.length / auditLogsPerPage) || 1;
+    if (currentAuditPage < totalPages) {
+        currentAuditPage++;
+        renderAuditLogs();
+    }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    renderAuditLogs();
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // Parse Analytics Data
+    const weeklyLabels = JSON.parse('{{ analytics.weekly_data_labels|safe }}');
+    const weeklyValues = JSON.parse('{{ analytics.weekly_data_values|safe }}');
+    const shiftDataObj = JSON.parse('{{ analytics.shift_data|safe }}');
+
+    function getChartColor() { return document.documentElement.classList.contains('dark-mode') ? '#94a3b8' : '#6b7280'; }
+    function getGridColor() { return document.documentElement.classList.contains('dark-mode') ? '#334155' : '#e5e7eb'; }
+
+    Chart.defaults.color = getChartColor();
+
+    const ctxWeekly = document.getElementById('weeklyChart').getContext('2d');
+    window.weeklyChartInstance = new Chart(ctxWeekly, {
+        type: 'line',
+        data: {
+            labels: weeklyLabels,
+            datasets: [{
+                label: 'Requests',
+                data: weeklyValues,
+                borderColor: '#3b82f6',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: getGridColor() } },
+                y: { beginAtZero: true, ticks: { precision: 0 }, grid: { color: getGridColor() } }
+            }
+        }
+    });
+
+    const shiftLabels = Object.keys(shiftDataObj);
+    const shiftValues = Object.values(shiftDataObj);
+    const shiftColors = ['#f59e0b', '#3b82f6', '#4b5563'];
+    const shiftBgColors = ['#fef3c7', '#dbeafe', '#e5e7eb'];
+
+    const ctxShift = document.getElementById('shiftChart').getContext('2d');
+    window.shiftChartInstance = new Chart(ctxShift, {
+        type: 'doughnut',
+        data: {
+            labels: shiftLabels,
+            datasets: [{
+                data: shiftValues,
+                backgroundColor: shiftBgColors,
+                borderColor: shiftColors,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right' }
+            }
+        }
+    });
+
+    window.addEventListener('themeChanged', () => {
+        Chart.defaults.color = getChartColor();
+        if (window.weeklyChartInstance) {
+            window.weeklyChartInstance.options.scales.x.grid.color = getGridColor();
+            window.weeklyChartInstance.options.scales.y.grid.color = getGridColor();
+            window.weeklyChartInstance.update();
+        }
+        if (window.shiftChartInstance) {
+            window.shiftChartInstance.update();
+        }
+    });
+});
+
+function asyncUpdate(url, sectionId) {
+    const currentSection = document.getElementById(sectionId);
+    if (!currentSection) return;
+
+    const activeElement = document.activeElement;
+    const activeName = activeElement ? activeElement.name : null;
+    let cursorStart = null, cursorEnd = null;
+    if (activeElement && activeElement.tagName === 'INPUT') {
+        cursorStart = activeElement.selectionStart;
+        cursorEnd = activeElement.selectionEnd;
+    }
+
+    fetch(url, { cache: 'no-store' })
+        .then(res => res.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const newSection = doc.getElementById(sectionId);
+            if (newSection) {
+                currentSection.innerHTML = newSection.innerHTML;
+                history.replaceState(null, '', url);
+
+                if (activeName) {
+                    const elToFocus = currentSection.querySelector(`[name="${activeName}"]`);
+                    if (elToFocus) {
+                        elToFocus.focus();
+                        if (cursorStart !== null) {
+                            elToFocus.setSelectionRange(cursorStart, cursorEnd);
+                        }
+                    }
+                }
+            }
+        });
+}
+
+function asyncSearch(inputElement, sectionId) {
+    clearTimeout(inputElement.searchTimeout);
+    inputElement.searchTimeout = setTimeout(() => {
+        const form = inputElement.closest('form');
+        const url = new URL(form.action);
+        new FormData(form).forEach((value, key) => url.searchParams.append(key, value));
+        asyncUpdate(url.href, sectionId);
+    }, 300);
+}
+
+function asyncNavigate(event, url, sectionId) {
+    event.preventDefault();
+    asyncUpdate(url, sectionId);
+}
+
+document.addEventListener("DOMContentLoaded", function() {
+    const scrollPos = sessionStorage.getItem('dashboardScroll');
+    if (scrollPos) {
+        window.scrollTo(0, parseInt(scrollPos));
+        sessionStorage.removeItem('dashboardScroll');
+    }
+});
+
+document.addEventListener('submit', function(e) {
+    if (e.target && e.target.tagName === 'FORM' && (e.target.method || '').toUpperCase() === 'POST') {
+        sessionStorage.setItem('dashboardScroll', window.scrollY);
+    }
+});
+
+let isResizing = false;
+let currentWrap = null;
+let startY = 0;
+let startHeight = 0;
+let minHeight = 150;
+
+function startResize(e, handle) {
+    isResizing = true;
+    currentWrap = handle.previousElementSibling;
+    startY = e.clientY;
+    startHeight = parseInt(document.defaultView.getComputedStyle(currentWrap).height, 10);
+    minHeight = parseInt(document.defaultView.getComputedStyle(currentWrap).minHeight, 10) || 150;
+    document.addEventListener('mousemove', doResize);
+    document.addEventListener('mouseup', stopResize);
+    document.body.style.cursor = 'ns-resize';
+}
+
+function doResize(e) {
+    if (!isResizing || !currentWrap) return;
+    const table = currentWrap.querySelector('table');
+    const maxHeight = table ? table.offsetHeight + 10 : 2000;
+    const newHeight = startHeight + e.clientY - startY;
+    currentWrap.style.height = Math.min(maxHeight, Math.max(minHeight, newHeight)) + 'px';
+}
+
+function stopResize(e) {
+    isResizing = false;
+    document.removeEventListener('mousemove', doResize);
+    document.removeEventListener('mouseup', stopResize);
+    document.body.style.cursor = '';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,496 @@
+<!--
+  Copyright (C) 2026 Javier Garcia
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+-->
+{% extends "base.html" %}
+{% block content %}
+<div class="dashboard-grid">
+  <div class="section-head">
+    <h1 style="margin: 0;"><span id="alert-icon" style="display: none; animation: blink 1s infinite;">⚠️ </span>Operator Dashboard {% if user.shift %}<span class="eyebrow" style="margin-left: 1rem; display: inline-block;">Shift: {{ user.shift|capitalize }}</span>{% endif %}</h1>
+    <div class="volume-control-wrap" title="Alert Volume">
+      <span id="alert-mute-btn" style="font-size: 1.2rem; cursor: pointer; user-select: none;" title="Toggle Mute">🔊</span>
+      <input type="range" id="alert-volume-slider" class="volume-slider" min="0" max="1" step="any" value="0.3">
+      <span id="alert-volume-display" style="font-size: 0.9rem; min-width: 4ch; font-variant-numeric: tabular-nums; color: var(--muted); text-align: right;">30%</span>
+    </div>
+  </div>
+  <style>
+    @keyframes blink {
+      0% { opacity: 1; }
+      50% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+    @keyframes fadeOut {
+      from { opacity: 1; transform: scale(1); }
+      to { opacity: 0; transform: scale(0.95); }
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    dialog[open] {
+      animation: fadeIn 0.15s ease-out forwards;
+    }
+    dialog.fade-out {
+      animation: fadeOut 0.15s ease-in forwards;
+    }
+  </style>
+
+  {% set unassigned_count = requests | selectattr("status", "equalto", REQUEST_REQUESTED) | list | length %}
+  {% set my_assigned_count = requests | selectattr("operator_id", "equalto", user.id) | list | length %}
+  {% set total_active = requests | length %}
+
+<div id="dashboard-content">
+  <!-- KPI Grid -->
+  <div class="kpi-grid" style="margin-bottom: 2rem;">
+    <!-- Unassigned Emergencies -->
+    {% set unassigned = requests|selectattr('status', 'equalto', REQUEST_REQUESTED)|list %}
+    <div class="kpi-card {% if unassigned %}warning{% endif %}">
+      <span class="kpi-label">Unassigned Emergencies</span>
+      <span class="kpi-value" id="kpi-unassigned-count">{{ unassigned|length }}</span>
+    </div>
+
+    <!-- Longest Wait -->
+    <div class="kpi-card" id="kpi-wait-card" data-timestamp="{{ longest_wait_timestamp }}">
+      <span class="kpi-label">Longest Wait (Unassigned)</span>
+      <span class="kpi-value" id="kpi-wait-value">{{ longest_wait }}</span>
+    </div>
+
+    <!-- My Handled Today -->
+    <div class="kpi-card highlight">
+      <span class="kpi-label">My Handled Today</span>
+      <span class="kpi-value">{{ resolved_today }}</span>
+    </div>
+  </div>
+
+  <section class="card">
+    <h2 style="margin-top: 0; margin-bottom: 20px;">Incoming Help Requests</h2>
+    <div class="table-wrap">
+      <table class="responsive-table">
+        <thead>
+          <tr><th>Patient</th><th>Status</th><th>Assigned To</th><th>Created</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for item in requests %}
+          <tr {% if item.operator_id == user.id %}class="highlight-row"{% endif %}>
+            <td data-label="Patient">
+              <div style="font-weight: 600;">{{ item.patient.name }}</div>
+              {% if item.patient.email %}
+              <div class="muted" style="font-size: 0.85rem;">{{ item.patient.email }}</div>
+              {% endif %}
+            </td>
+            <td data-label="Status">
+              <span class="status status-{{ item.status }}">
+                {{ "Unassigned" if item.status == REQUEST_REQUESTED else ("Assigned" if item.status == REQUEST_ACKNOWLEDGED else "Resolved") }}
+              </span>
+            </td>
+            <td data-label="Assigned To">
+              {% if item.operator %}
+                {{ item.operator.name }}
+              {% else %}
+                <span class="muted">-</span>
+              {% endif %}
+            </td>
+            <td data-label="Created" style="white-space: nowrap;">
+              <span class="local-time" data-utc="{{ item.created_at.isoformat() }}Z" data-format="datetime">{{ item.created_at.strftime("%Y-%m-%d %H:%M") }}</span>
+            </td>
+            <td data-label="Actions">
+              {% if item.status == REQUEST_REQUESTED %}
+              <form method="post" action="/operator/requests/{{ item.id }}/acknowledge" style="margin: 0;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="btn btn-primary">Acknowledge</button>
+              </form>
+              {% elif item.status == REQUEST_ACKNOWLEDGED %}
+                {% if item.operator_id == user.id %}
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('modal-resolve-{{ item.id }}').showModal()">Resolve</button>
+                <dialog id="modal-resolve-{{ item.id }}" style="padding: 0; border-radius: 12px; border: none; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); max-width: 500px; width: 90%; background: var(--bg); color: inherit; max-height: 90vh; overflow-y: auto;">
+                  <form class="form-stack" method="post" action="/operator/requests/{{ item.id }}/resolve" style="margin: 0;" onsubmit="
+                    event.preventDefault();
+                    const action = this.querySelector('select[name=action_taken]').value;
+                    const condition = this.querySelector('input[name=condition_{{ item.id }}]:checked').value;
+                    const notes = this.querySelector('textarea[name=notes]').value;
+                    this.querySelector('input[name=message]').value = `[${condition}] ${action}` + (notes ? `\n\nNotes: ${notes}` : '');
+                    
+                    const dialog = document.getElementById('modal-resolve-{{ item.id }}');
+                    dialog.classList.add('fade-out');
+                    setTimeout(() => {
+                        this.submit();
+                    }, 200);
+                  ">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div style="padding: 32px 32px 0 32px;">
+                      <!-- Header -->
+                      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                        <h3 style="margin: 0; font-size: 1.5rem; font-weight: 600;">Resolve Request #{{ item.id }}</h3>
+                        <button type="button" onclick="
+                          const dialog = document.getElementById('modal-resolve-{{ item.id }}');
+                          dialog.classList.add('fade-out');
+                          setTimeout(() => {
+                              dialog.close();
+                              dialog.classList.remove('fade-out');
+                          }, 150);
+                        " style="background: none; border: none; color: var(--muted); font-size: 28px; cursor: pointer; padding: 0; line-height: 1;">&times;</button>
+                      </div>
+
+                      <!-- Body -->
+                      <div style="background-color: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                          <strong style="font-size: 1.25rem;">{{ item.patient.name }}</strong>
+                          <span style="color: var(--danger); font-size: 1rem; font-weight: 600;"><span class="local-time" data-utc="{{ item.created_at.isoformat() }}Z" data-format="alert-time">{{ item.created_at.strftime("%Hh:%Mm:%Ss") }}</span></span>
+                        </div>
+                        {% if item.patient.profile %}
+                        <div class="patient-info-grid">
+                          <div><strong style="color: inherit;">Age/Blood:</strong> {{ item.patient.profile.computed_age if item.patient.profile.computed_age is not none else 'N/A' }} / {{ item.patient.profile.blood_type or 'N/A' }}</div>
+                          <div><strong style="color: inherit;">Allergies:</strong> <span class="truncate-text" style="display:inline-block; max-width: 140px; vertical-align: bottom;" title="{{ item.patient.profile.allergies or 'None' }}" onclick="navigator.clipboard.writeText(this.title); alert('Allergies copied to clipboard!');">{{ item.patient.profile.allergies or 'None' }}</span></div>
+                          <div><strong style="color: inherit;">Conditions:</strong> <span class="truncate-text" style="display:inline-block; max-width: 140px; vertical-align: bottom;" title="{{ item.patient.profile.chronic_conditions or 'None' }}" onclick="navigator.clipboard.writeText(this.title); alert('Conditions copied to clipboard!');">{{ item.patient.profile.chronic_conditions or 'None' }}</span></div>
+                          <div><strong style="color: inherit;">Meds:</strong> <span class="truncate-text" style="display:inline-block; max-width: 140px; vertical-align: bottom;" title="{{ item.patient.profile.medications or 'None' }}" onclick="navigator.clipboard.writeText(this.title); alert('Medications copied to clipboard!');">{{ item.patient.profile.medications or 'None' }}</span></div>
+                        </div>
+                        <div style="margin-top: 0.75rem; font-size: 1rem; color: var(--muted);">
+                          <strong style="color: inherit;">Emergency Contact:</strong> {{ item.patient.profile.emergency_contact or 'N/A' }}
+                        </div>
+                        {% else %}
+                        <div style="font-size: 1rem; color: var(--muted);">No medical profile available.</div>
+                        {% endif %}
+                      </div>
+
+                      <div class="form-stack">
+                        <input type="hidden" name="message" value="">
+
+                        <div style="display:grid;gap:8px;font-size:1rem;font-weight:600">Patient Condition
+                          <div class="condition-chips">
+                            <label class="radio-chip"><input type="radio" name="condition_{{ item.id }}" value="Stable" required> Stable</label>
+                            <label class="radio-chip"><input type="radio" name="condition_{{ item.id }}" value="Observation"> Observation</label>
+                            <label class="radio-chip"><input type="radio" name="condition_{{ item.id }}" value="Critical"> Critical</label>
+                          </div>
+                        </div>
+
+                        <label>Action Taken
+                          <select name="action_taken" required>
+                            <option value="">Select an action...</option>
+                            <option value="Resolved over phone">Resolved over phone</option>
+                            <option value="Ambulance dispatched">Ambulance dispatched</option>
+                            <option value="Escalated to doctor">Escalated to doctor</option>
+                            <option value="False alarm">False alarm</option>
+                          </select>
+                        </label>
+
+                        <label>Additional Notes (Optional)
+                          <textarea name="notes" rows="3" placeholder="Any extra details..."></textarea>
+                        </label>
+                      </div>
+
+                      <!-- Footer -->
+                      <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                        <button type="submit" class="btn btn-primary" style="flex: 1;">Save Changes</button>
+                        <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="
+                          const dialog = document.getElementById('modal-resolve-{{ item.id }}');
+                          dialog.classList.add('fade-out');
+                          setTimeout(() => {
+                              dialog.close();
+                              dialog.classList.remove('fade-out');
+                          }, 200);
+                        ">Cancel</button>
+                      </div>
+                      
+                      <div style="height: 32px;"></div>
+                    </div>
+                  </form>
+                </dialog>
+                {% else %}
+                <span class="muted">In progress</span>
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+
+          {% else %}
+          <tr><td colspan="6" class="empty">No requests yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const openModalId = urlParams.get('open_modal');
+    if (openModalId) {
+        const modal = document.getElementById('modal-resolve-' + openModalId);
+        if (modal && typeof modal.showModal === 'function') {
+            modal.showModal();
+        }
+        // Remove the query parameter from the URL so reloading doesn't re-open it
+        const newUrl = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, document.title, newUrl);
+    }
+});
+
+function asyncUpdate(url, sectionId) {
+    const currentSection = document.getElementById(sectionId);
+    if (!currentSection) return;
+
+    fetch(url, { cache: 'no-store' })
+        .then(res => res.text())
+        .then(html => {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const newSection = doc.getElementById(sectionId);
+            if (newSection) {
+                currentSection.innerHTML = newSection.innerHTML;
+            }
+        });
+}
+
+(() => {
+  let audioCtx = null;
+  let masterGain = null;
+  let sirenInterval = null;
+  let dingInterval = null;
+  let lastSirenTime = 0;
+  
+  let savedVol = localStorage.getItem('telecare_alert_volume');
+  let alertVolume = (savedVol !== null && !isNaN(parseFloat(savedVol))) ? parseFloat(savedVol) : 0.3;
+  
+  let previousVol = alertVolume > 0 ? alertVolume : 0.3;
+  
+  const volumeSlider = document.getElementById('alert-volume-slider');
+  const volumeDisplay = document.getElementById('alert-volume-display');
+  const muteBtn = document.getElementById('alert-mute-btn');
+
+  function updateVolumeUI(vol) {
+      if (volumeSlider) volumeSlider.value = vol;
+      if (volumeDisplay) volumeDisplay.textContent = Math.round(vol * 100) + '%';
+      if (muteBtn) muteBtn.textContent = vol > 0 ? '🔊' : '🔇';
+      
+      localStorage.setItem('telecare_alert_volume', vol);
+      if (masterGain && audioCtx) {
+          masterGain.gain.setValueAtTime(vol * vol, audioCtx.currentTime);
+      }
+  }
+
+  if (volumeSlider) {
+      updateVolumeUI(alertVolume);
+      
+      volumeSlider.addEventListener('input', (e) => {
+          alertVolume = parseFloat(e.target.value);
+          if (alertVolume > 0) previousVol = alertVolume;
+          updateVolumeUI(alertVolume);
+      });
+      
+      if (muteBtn) {
+          muteBtn.addEventListener('click', () => {
+              if (alertVolume > 0) {
+                  previousVol = alertVolume;
+                  alertVolume = 0;
+              } else {
+                  alertVolume = previousVol > 0 ? previousVol : 0.3;
+              }
+              updateVolumeUI(alertVolume);
+          });
+      }
+      
+      const volumeContainer = volumeSlider.parentElement;
+      if (volumeContainer) {
+          volumeContainer.addEventListener('wheel', (e) => {
+              e.preventDefault(); // Prevent page scrolling
+              let delta = e.deltaY < 0 ? 0.01 : -0.01;
+              alertVolume = Math.min(1, Math.max(0, alertVolume + delta));
+              if (alertVolume > 0) previousVol = alertVolume;
+              updateVolumeUI(alertVolume);
+          }, { passive: false });
+      }
+  }
+
+  const playSiren = () => {
+    if (!audioCtx || audioCtx.state === 'suspended') return;
+    
+    const time = audioCtx.currentTime;
+    // Prevent overlapping oscillators when tab is restored and intervals fire at once
+    if (time < lastSirenTime + 1.9) return;
+    lastSirenTime = time;
+    
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    // Use a triangle wave instead of a square wave to remove harsh, piercing high frequencies
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(600, time);
+    osc.frequency.setValueAtTime(800, time + 0.3);
+    osc.frequency.setValueAtTime(600, time + 0.6);
+    osc.frequency.setValueAtTime(800, time + 0.9);
+    osc.frequency.setValueAtTime(600, time + 1.2);
+    
+    // Envelope goes 0 -> 1 -> 1 -> 0, then masterGain scales it
+    gainNode.gain.setValueAtTime(0, time);
+    gainNode.gain.linearRampToValueAtTime(1, time + 0.1); 
+    gainNode.gain.setValueAtTime(1, time + 1.4);
+    gainNode.gain.linearRampToValueAtTime(0, time + 1.5);
+    
+    osc.connect(gainNode);
+    gainNode.connect(masterGain);
+    
+    osc.start(time);
+    osc.stop(time + 1.5);
+  };
+
+  const playDing = () => {
+    console.log("playDing called! audioCtx state:", audioCtx ? audioCtx.state : "null");
+    if (!audioCtx || audioCtx.state === 'suspended') {
+        console.warn("AudioContext suspended, cannot play ding");
+        return;
+    }
+    const time = audioCtx.currentTime + 0.05;
+    const osc = audioCtx.createOscillator();
+    const gainNode = audioCtx.createGain();
+    
+    // Use a sine wave for a duller, softer tone without harsh harmonics
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(450, time);
+    
+    gainNode.gain.setValueAtTime(0, time);
+    // Make the ding slightly quieter than the main alarm but still clearly noticeable
+    const dingVol = alertVolume * 0.8;
+    gainNode.gain.linearRampToValueAtTime(dingVol, time + 0.1);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
+    
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    
+    osc.start(time);
+    osc.stop(time + 0.55);
+  };
+
+  const initAudio = () => {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = alertVolume * alertVolume; // Squared for logarithmic hearing
+        masterGain.connect(audioCtx.destination);
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    
+    // Request Desktop Notification Permission
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+    }
+  };
+  
+  // Keep resuming audio context on user interaction just in case the browser suspends it
+  document.addEventListener('click', () => {
+      initAudio();
+      if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+  });
+
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data && data.event === "dashboard_refresh") {
+          asyncUpdate(window.location.href, 'dashboard-content');
+          
+          if (data.reason === 'help_requested') {
+              if ("Notification" in window && Notification.permission === "granted") {
+                  const patientName = data.patient_name || "A patient";
+              const timeStr = data.time ? ` | ${data.time}` : "";
+              const notif = new Notification("⚠️ Telecare", {
+                  body: `${patientName}${timeStr}`,
+                  requireInteraction: true
+              });
+              notif.onclick = function() {
+                  window.focus();
+                  this.close();
+              };
+          }
+        }
+      }
+    } catch (e) {
+      console.error("WebSocket message error:", e);
+    }
+  };
+
+  // Live timer for Longest Wait & Siren trigger
+  setInterval(() => {
+      // Handle timer
+      const card = document.getElementById('kpi-wait-card');
+      if (card) {
+          const ts = parseFloat(card.dataset.timestamp);
+          const valSpan = document.getElementById('kpi-wait-value');
+          if (ts > 0) {
+              const nowSec = Date.now() / 1000;
+              const diff = Math.max(0, Math.floor(nowSec - ts));
+              valSpan.textContent = diff + ' s';
+          } else {
+              valSpan.textContent = '0 s';
+          }
+      }
+
+      // Handle siren, icon, and document title
+      const hasPending = document.querySelector('form[action$="/acknowledge"]') !== null;
+      const isBusy = document.querySelector('dialog[id^="modal-resolve-"]') !== null;
+      const alertIcon = document.getElementById('alert-icon');
+      
+      if (hasPending) {
+          if (alertIcon) alertIcon.style.display = 'inline-block';
+          
+          if (isBusy) {
+              // Stop loud siren if busy
+              if (sirenInterval) {
+                  clearInterval(sirenInterval);
+                  sirenInterval = null;
+              }
+              // Play soft ding continuously
+              if (!dingInterval) {
+                  playDing();
+                  dingInterval = setInterval(playDing, 2000);
+              }
+          } else {
+              // Not busy, play loud siren continuously
+              if (dingInterval) {
+                  clearInterval(dingInterval);
+                  dingInterval = null;
+              }
+              if (!sirenInterval) {
+                  playSiren();
+                  sirenInterval = setInterval(playSiren, 2000);
+              }
+          }
+
+          if (!window.titleInterval) {
+              const baseTitle = document.title.replace("⚠️ ", "");
+              let toggle = true;
+              window.titleInterval = setInterval(() => {
+                  document.title = toggle ? "⚠️ " + baseTitle : baseTitle;
+                  toggle = !toggle;
+              }, 1000);
+          }
+      } else {
+          if (alertIcon) alertIcon.style.display = 'none';
+          if (sirenInterval) {
+              clearInterval(sirenInterval);
+              sirenInterval = null;
+          }
+          if (dingInterval) {
+              clearInterval(dingInterval);
+              dingInterval = null;
+          }
+          if (window.titleInterval) {
+              clearInterval(window.titleInterval);
+              window.titleInterval = null;
+              document.title = document.title.replace("⚠️ ", "");
+          }
+      }
+  }, 1000);
+})();
+</script>
+{% endblock %}

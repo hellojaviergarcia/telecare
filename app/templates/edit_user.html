@@ -1,0 +1,45 @@
+<!--
+  Copyright (C) 2026 Javier Garcia
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+-->
+{% extends "base.html" %}
+{% block content %}
+<div class="auth-shell">
+  <div class="auth-card">
+    <h2>Edit {% if target.role == 'operator' %}Operator{% else %}Patient{% endif %}</h2>
+    {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+    <form method="post" action="/technician/edit_user/{{ target.id }}" class="form-stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Name
+        <input type="text" name="name" value="{{ target.name }}" required>
+      </label>
+      
+      {% if target.role == 'operator' %}
+      <label>Email
+        <input type="email" name="email" value="{{ target.email }}" required>
+      </label>
+      <label>Shift
+        <select name="shift" required>
+          <option value="morning" {% if target.shift == 'morning' %}selected{% endif %}>Morning</option>
+          <option value="afternoon" {% if target.shift == 'afternoon' %}selected{% endif %}>Afternoon</option>
+          <option value="night" {% if target.shift == 'night' %}selected{% endif %}>Night</option>
+        </select>
+      </label>
+      {% endif %}
+      
+      <label>New Password (leave blank to keep current)
+        <input type="password" name="password">
+      </label>
+      
+      <div style="display:flex;gap:12px;margin-top:12px">
+        <button class="btn btn-primary" type="submit" style="flex:1">Save Changes</button>
+        <a href="/technician/dashboard" class="btn btn-secondary" style="text-align:center; padding-top: 10px; flex:1">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

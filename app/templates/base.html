@@ -1,0 +1,140 @@
+<!--
+  Copyright (C) 2026 Javier Garcia
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+-->
+<!doctype html>
+<html lang="es" {% if user and user.dark_mode %}class="dark-mode"{% endif %}>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title if title else "Telecare" }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='favicon.svg') }}">
+</head>
+<body>
+  {% block header %}
+    {% if user %}
+    <header class="topbar">
+      <a href="/" class="landing-nav-logo" style="display: flex; align-items: center; gap: 8px; color: inherit; text-decoration: none;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <defs>
+            <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#2563eb" />
+              <stop offset="100%" stop-color="#000000" />
+            </linearGradient>
+          </defs>
+          <path d="M12 2v20M2 12h20" />
+        </svg>
+        Telecare
+      </a>
+      <button id="topbar-menu-btn" class="mobile-menu-btn" onclick="toggleTopbarMenu()" aria-label="Toggle menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+      <div id="topbar-actions" class="topbar-actions">
+        <button class="dark-mode-btn" onclick="toggleDarkMode()" title="Toggle Dark Mode">
+          <span id="dark-mode-icon">{% if user.dark_mode %}☀️{% else %}🌙{% endif %}</span>
+        </button>
+        <span class="user-chip">
+          {{ {'operator':'Operator', 'patient':'Patient', 'technician':'Technician'}.get(user.role, user.role|title) }}{% if user.role != 'technician' %}: <strong>{{ user.name }}</strong>{% endif %}
+        </span>
+        <form method="post" action="/logout" class="logout-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn btn-outline">Logout</button>
+        </form>
+      </div>
+    </header>
+    {% else %}
+    <nav class="landing-nav">
+      <a href="/" class="landing-nav-logo" style="display: flex; align-items: center; gap: 8px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="url(#logo-grad)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <defs>
+            <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#2563eb" />
+              <stop offset="100%" stop-color="#000000" />
+            </linearGradient>
+          </defs>
+          <path d="M12 2v20M2 12h20" />
+        </svg>
+        Telecare
+      </a>
+      <button id="mobile-menu-btn" class="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Toggle menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+      </button>
+      <div id="landing-nav-actions" class="landing-nav-actions">
+        <a href="/technician/login" class="nav-link-tech">Technician</a>
+        <a href="{{ url_for('operator_login_form') }}" class="btn btn-outline nav-btn">Operator Login</a>
+        <a class="btn btn-primary nav-btn-primary" href="{{ url_for('patient_login_form') }}">Patient Login</a>
+      </div>
+    </nav>
+    {% endif %}
+  {% endblock %}
+
+  {% block content_wrapper %}
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+  {% endblock %}
+
+  <script>
+  function toggleDarkMode() {
+    const html = document.documentElement;
+    const isDark = html.classList.toggle('dark-mode');
+    const icon = document.getElementById('dark-mode-icon');
+    if (icon) {
+        icon.textContent = isDark ? '☀️' : '🌙';
+    }
+    window.dispatchEvent(new Event('themeChanged'));
+    let formData = new FormData();
+    formData.append("csrf_token", "{{ csrf_token }}");
+    fetch('/toggle-dark-mode', { method: 'POST', body: formData }).catch(err => console.error(err));
+  }
+
+  function toggleMobileMenu() {
+    const navActions = document.getElementById('landing-nav-actions');
+    if (navActions) {
+      navActions.classList.toggle('mobile-menu-open');
+    }
+  }
+
+  function toggleTopbarMenu() {
+    const topbarActions = document.getElementById('topbar-actions');
+    if (topbarActions) {
+      topbarActions.classList.toggle('mobile-menu-open');
+    }
+  }
+  </script>
+  {% block scripts %}{% endblock %}
+    <script>
+      document.addEventListener("DOMContentLoaded", function() {
+        document.querySelectorAll(".local-time").forEach(el => {
+          const utcStr = el.getAttribute("data-utc");
+          if (!utcStr) return;
+          // Ensure it's treated as UTC by appending Z if missing
+          const date = new Date(utcStr.endsWith('Z') ? utcStr : utcStr + "Z");
+          if (isNaN(date)) return;
+          
+          const format = el.getAttribute("data-format");
+          if (format === "alert-time") {
+            const h = String(date.getHours()).padStart(2, '0');
+            const m = String(date.getMinutes()).padStart(2, '0');
+            const s = String(date.getSeconds()).padStart(2, '0');
+            el.textContent = `${h}h:${m}m:${s}s`;
+          } else if (format === "time") {
+            el.textContent = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+          } else if (format === "date") {
+            el.textContent = date.toLocaleDateString();
+          } else {
+            el.textContent = date.toLocaleDateString() + " " + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+          }
+        });
+      });
+    </script>
+</body>
+</html>

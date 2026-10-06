@@ -1,0 +1,28 @@
+<!--
+  Copyright (C) 2026 Javier Garcia
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+-->
+{% extends "base.html" %}
+{% block content_wrapper %}
+<main style="width: 100%; overflow-x: hidden;">
+<section class="auth-shell">
+  <div class="auth-card">
+    <div class="auth-icon">
+      <svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+    </div>
+    <h1>Patient Login</h1>
+    {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+    <form method="post" class="form-stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>Name<input type="text" name="name" required></label>
+      <label>Password<input type="password" name="password" required></label>
+      <button class="btn btn-primary" type="submit">Login</button>
+    </form>
+  </div>
+</section>
+</main>
+{% endblock %}
