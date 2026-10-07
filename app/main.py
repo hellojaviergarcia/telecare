@@ -90,12 +90,6 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 @app.on_event("startup")
 def startup() -> None:
     app.state.loop = asyncio.get_running_loop()
-    from sqlalchemy import text
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("ALTER TABLE users ADD COLUMN dark_mode BOOLEAN DEFAULT 0"))
-    except Exception:
-        pass
     from .init_db import main as init_db_main
     init_db_main()
 

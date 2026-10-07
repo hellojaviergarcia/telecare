@@ -26,7 +26,7 @@ A real-time telecare system designed to connect patients with medical operators 
 
 ## 🛠️ Tech Stack
 - **Backend:** FastAPI (Python)
-- **Database:** SQLite (Development) / PostgreSQL Ready (Production)
+- **Database:** PostgreSQL
 - **ORM:** SQLAlchemy 2.0
 - **Frontend:** Jinja2 Templates, Vanilla JavaScript, CSS3 variables
 - **Security:** CSRF Protection, Bcrypt Password Hashing, SlowAPI (Rate Limiting)
@@ -43,6 +43,9 @@ telecare/
 │   ├── init_db.py       # Script to initialize tables
 │   ├── templates/       # Jinja2 HTML views
 │   └── static/          # CSS stylesheets and SVG assets
+├── docker-compose.yml   # Multi-container orchestration
+├── Dockerfile           # Multi-stage image build (Chainguard)
+├── .env.example         # Environment variables template
 ├── run.py               # Uvicorn server launcher
 └── requirements.txt     # Python dependencies
 ```
@@ -71,31 +74,41 @@ pip install -r requirements.txt
 **STOP: Do not skip this section.** You must configure your application secrets before initializing the database or starting the server.
 
 ### Step 1: Configure Secrets & Database
-> **CRITICAL:** You must manually edit the `app/config.py` file before doing anything else. Scroll down to the `⚠️ PRODUCTION CONFIGURATION ⚠️` section of the file. Running the application with the default configuration will leave your system completely vulnerable.
+Copy the example environment file and fill in your values:
+```bash
+cp .env.example .env
+```
 
-Open `app/config.py` in your code editor and change the following values:
+Open `.env` and set the following:
 
 **Security & Sessions:**
-- `SECRET_KEY`: Change this to a long, random string. It is used to encrypt session cookies.
-- `USE_HTTPS`: Set this to `True` if you are deploying to a production server with an SSL certificate (HTTPS).
+- `SECRET_KEY`: Generate a strong one with `python -c "import secrets; print(secrets.token_hex(32))"`
+- `USE_HTTPS`: Set to `true` if deploying with an SSL certificate (HTTPS).
 
-**Database (PostgreSQL Migration):**
-- `DATABASE_URL`: By default, this is set to use SQLite (`sqlite:///./teleassist.db`). For production, it is highly recommended to migrate to PostgreSQL. Simply change this string to your PostgreSQL connection URL (e.g., `postgresql://username:password@localhost:5432/telecare_db`). *Note: The PostgreSQL driver (`psycopg2-binary`) is already included.*
+**Database:**
+- `DATABASE_URL`: PostgreSQL connection string (e.g., `postgresql+psycopg2://username:password@localhost:5432/telecare_db`). *Note: The PostgreSQL driver (`psycopg2-binary`) is already included.*
 
 **First-Time Admin:**
 - `TECHNICIAN_EMAIL`: Your admin email to log into the Technician Dashboard.
-- `TECHNICIAN_PASSWORD`: Your admin password.
+- `TECHNICIAN_PASSWORD`: A strong password for the Technician Dashboard.
+
+> **CRITICAL:** Never commit your `.env` file. It is already listed in `.gitignore`.
 
 ### Step 2: Initialize Database
-Once you have saved your changes in `app/config.py`, initialize the database schemas by running:
+Once you have configured your `.env`, initialize the database schemas by running:
 ```bash
 python -m app.init_db
 ```
 
 ## 💻 Usage
-- **Run the Server:** Start the application by executing `python run.py` in your terminal.
-- **Access the App:** Open your web browser and navigate to `http://127.0.0.1:8000`.
-- **First Steps:** Log in to `/technician/login` with your configured credentials to start registering Operators and Patients.
+
+### Docker (recommended)
+```bash
+cp .env.example .env
+# Edit .env with your values
+docker compose up --build -d
+```
+Access the app at `http://localhost:8000`.
 
 ## 📸 Visual Overview
 <a id="visual-overview"></a>

@@ -13,15 +13,8 @@ from .config import TECHNICIAN_EMAIL, TECHNICIAN_PASSWORD
 
 def main() -> None:
     Base.metadata.create_all(bind=engine)
-    
-    with Session(engine) as db:
-        try:
-            from sqlalchemy import text
-            db.execute(text("ALTER TABLE patient_profiles ADD COLUMN birth_date VARCHAR(10)"))
-            db.commit()
-        except:
-            pass
 
+    with Session(engine) as db:
         technician = db.query(models.User).filter_by(role=models.ROLE_TECHNICIAN, email=TECHNICIAN_EMAIL).first()
         if not technician:
             technician = models.User(
