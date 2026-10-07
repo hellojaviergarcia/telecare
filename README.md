@@ -51,26 +51,6 @@ telecare/
 └── requirements.txt     # Python dependencies
 ```
 
-## 🚀 Installation
-
-### 1. Prerequisites
-Ensure you have **Python 3.9+** installed on your system.
-
-### 2. Setup Environment
-Clone the repository and set up an isolated environment:
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate it (Windows)
-.\venv\Scripts\activate
-# Activate it (Linux/Mac)
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
 ## ⚙️ Configuration & Initialization
 **STOP: Do not skip this section.** You must configure your application secrets before initializing the database or starting the server.
 
