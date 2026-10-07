@@ -1,5 +1,6 @@
 # 🏥 Telecare System
 
+![Docker](https://img.shields.io/badge/Docker-Chainguard-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-00a393.svg)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0+-red.svg)
